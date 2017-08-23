@@ -1,0 +1,28 @@
+[
+	{
+		"user":"admin",
+		"account":null,
+		"password":null
+	},
+	{
+		"user":"u1",
+		"account":"a1",
+		"password":"p1"
+	},
+	{
+		"user":"u2",
+		"account":null,
+		"password":null
+	},
+	{
+		"user":null,
+		"account":"a3",
+		"password":"p3"
+	},
+	{
+		"user":null,
+		"account":"a4",
+		"password":null
+	}
+
+]

@@ -1,0 +1,137 @@
+
+import java.io.BufferedReader;
+import java.io.DataOutputStream;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.Arrays;
+import java.util.List;
+import java.util.StringTokenizer;
+
+import com.google.gson.Gson;
+public class RFC913Server implements Runnable{
+	public final String HOSTNAME = "UOA-CS725";
+	public final int PORTNUMBER = 6789;
+	
+	RFC913Server(){
+		
+	}
+
+	
+	
+	@Override
+	public void run() {
+		UserData[] udArray = null;
+		// initialize user data
+		BufferedReader reader = new BufferedReader(new FileReader ("userdata.json"));
+		String line = null;
+	    StringBuilder stringBuilder = new StringBuilder();
+	    String temp = "";
+	    try {
+	        while((line = reader.readLine()) != null) {
+	            stringBuilder.append(line + "\n");
+	        }
+	        temp = stringBuilder.toString();
+	        udArray = new Gson().fromJson(temp, UserData[].class);
+	    } catch (IOException e) {
+			e.printStackTrace();
+		} finally {
+	        reader.close();
+	    }
+	    System.out.println("User Data Loaded...");
+	    List<UserData> userDataList = Arrays.asList(udArray);
+	    for (UserData ud : userDataList) {
+	    	System.out.println("user:" + ud.user + ", admin:" + ud.admin + ", account:" + ud.account + ", password:" + ud.password);
+	    }
+		
+		String clientSentence; 
+		String outputSentence = ""; 
+		String cmd;
+		
+		
+		LoginState state = WAIT_ACC;
+		ServerSocket welcomeSocket = new ServerSocket(PORTNUMBER); 
+		
+		while(true) { 
+			
+			Socket connectionSocket = welcomeSocket.accept(); 
+			
+			BufferedReader inFromClient = 
+			new BufferedReader(new
+				InputStreamReader(connectionSocket.getInputStream())); 
+			
+			DataOutputStream  outToClient = 
+			new DataOutputStream(connectionSocket.getOutputStream()); 
+			
+			outToClient.writeBytes("+" + HOSTNAME + " SFTP Service" + '\n'); 
+			
+			while (true){
+				
+				clientSentence = inFromClient.readLine(); 
+				
+				StringTokenizer tokenizedLine =
+						new StringTokenizer(clientSentence);
+				
+				cmd = tokenizedLine.nextToken();
+				
+				if (cmd.equals("DONE")){
+					outputSentence = "+" + HOSTNAME + " closing connection";
+					
+				} else if (cmd.equals("USER")) { // USER
+					String tempUser = tokenizedLine.nextToken();
+					int result = checkUser(tempUser, userDataList);
+					if (result == -1){ // invalid user
+						outputSentence = "-Invalid user-id, try again";
+					}else if (result == 0){ // bypass
+						outputSentence = "!" + tempUser + " logged in";
+						
+					}else if (result == 1){ // request password
+						outputSentence = "+User-id valid, send account and password";
+					}
+					
+				} else {
+					outputSentence = "-ERROR: Unrecognised Command...";
+				}
+				
+				outToClient.writeBytes(outputSentence + '\n'); 
+				if (cmd.equals("DONE")){
+					break;
+				}
+			}
+		} 
+		
+	}
+	
+	
+	private int checkUser(String name, List<UserData> userDataList){
+		
+		for (UserData ud : userDataList) {
+			if (ud.user != null){
+				if (ud.user.equals(name)){
+					System.out.println("Checking if admin: " + name);
+					if (ud.admin){
+						System.out.println("is admin");
+						return 0;
+					}else{
+						System.out.println("is not admin");
+						return 1;
+					}
+				}
+			}
+		}
+		return -1;
+	}
+	
+}
+
+
+
+class UserData {
+	UserData(){}
+	public String user;
+	public boolean admin;
+	public String account;
+	public String password;
+}

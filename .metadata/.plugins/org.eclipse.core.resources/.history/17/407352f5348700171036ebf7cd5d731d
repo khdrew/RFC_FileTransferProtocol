@@ -1,0 +1,3 @@
+public enum LoginState{
+	WAIT_PW, WAIT_ACC, LOGIN_USER, LOGIN_ACCOUNT
+}

@@ -1,0 +1,33 @@
+[
+	{
+		"user":"admin",
+		"admin":true,
+		"account":null,
+		"password":null
+	},
+	{
+		"user":"u1",
+		"admin":false,
+		"account":"a1",
+		"password":"p1"
+	},
+	{
+		"user":"u2",
+		"admin":false,
+		"account":null,
+		"password":null
+	},
+	{
+		"user":null,
+		"admin":false,
+		"account":"a3",
+		"password":"p3"
+	},
+	{
+		"user":null,
+		"admin":false,
+		"account":"a4",
+		"password":null
+	}
+
+]

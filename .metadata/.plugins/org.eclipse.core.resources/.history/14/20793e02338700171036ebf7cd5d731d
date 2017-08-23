@@ -1,0 +1,10 @@
+
+public class RFC913Server implements Runnable{
+	public static final String HOSTNAME = "UOA-CS725";
+	public static final int PORTNUMBER = 6789;
+	
+	RFC913Server(){
+		
+	}
+	
+}

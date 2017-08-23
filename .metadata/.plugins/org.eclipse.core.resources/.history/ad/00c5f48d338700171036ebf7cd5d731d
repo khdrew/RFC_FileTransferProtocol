@@ -1,0 +1,3 @@
+public enum LoginState{
+	AwaitPassword, AwaitAccount, LoggedInUser, LoggedInAccount
+}
