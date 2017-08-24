@@ -9,11 +9,11 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.StringTokenizer;
-import java.util.TimeZone;
 
 import com.google.gson.Gson;
 
@@ -54,6 +54,7 @@ class TCPServer {
 		String outputSentence = ""; 
 		String cmd;
 		String rootDir = "root";
+		File oldFile = null;
 		
 		ServerSocket welcomeSocket = new ServerSocket(PORTNUMBER); 
 		
@@ -64,6 +65,8 @@ class TCPServer {
 			String account = null;
 			String type = "B";
 			String currentDir = rootDir;
+			String tempChangeDir = null;
+			int tobeNext = 0;
 			
 			Socket connectionSocket = welcomeSocket.accept(); 
 			
@@ -96,11 +99,13 @@ class TCPServer {
 						int result = checkUser(tempUser, userDataList);
 						if (result == -1){ // invalid user
 							outputSentence = "-Invalid user-id, try again";
+							tempChangeDir = null;
 						}else if (result == 0){ // bypass acc and password
 							outputSentence = "!" + tempUser + " logged in";
 							state = LoginState.LOGIN_USER;
 							user = tempUser;
 							account = null;
+							tempChangeDir = null;
 						}else if (result == 1){ // request account & password
 							outputSentence = "+User-id valid, send account and password";
 							user = tempUser;
@@ -117,11 +122,17 @@ class TCPServer {
 						int result = checkAccount(tempAccount, userDataList);
 						if (result == -1){ // invalid account
 							outputSentence = "-Invalid account, try again";
+							tempChangeDir = null;
 						}else if (result == 0){ // bypass password
 							outputSentence = "!Account valid, logged in";
 							state = LoginState.LOGIN_ACCOUNT;
 							account = tempAccount;
 							user = null;
+							if (tempChangeDir != null){
+								currentDir = tempChangeDir;
+								outputSentence += "\0!Changed working dir to " + currentDir;
+								tempChangeDir = null;
+							}
 						}else if (result == 1){ // request password
 							outputSentence = "+Account valid, send password";
 							account = tempAccount;
@@ -138,15 +149,22 @@ class TCPServer {
 						int result = checkPassAccount(tempPassword, account, userDataList);
 						if (result == -1){ // invalid password
 							outputSentence = "-Wrong password, try again";
+							tempChangeDir = null;
 						}else if (result == 1){ // logged in account
 							outputSentence = "!Logged in";
 							state = LoginState.LOGIN_ACCOUNT;
+							if (tempChangeDir != null){
+								currentDir = tempChangeDir;
+								outputSentence += "\0!Changed working dir to " + currentDir;
+								tempChangeDir = null;
+							}
 						}
 					}else if (state == LoginState.WAIT_ACC){ // login for user
 						String tempPassword = tokenizedLine.nextToken();
 						int result = checkPassUser(tempPassword, user, userDataList);
 						if (result == -1){ // invalid password
 							outputSentence = "-Wrong password, try again";
+							tempChangeDir = null;
 						}else if (result == 1){ // logged in user but no account
 							outputSentence = "+Send account";
 						}
@@ -175,18 +193,23 @@ class TCPServer {
 					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER) {
 						if (arg.equals("F") || arg.equals("V")){
 							File subString;
-							String dir;
-							if (!tokenizedLine.hasMoreTokens()){
+							String dir = "";
+							if (!tokenizedLine.hasMoreTokens()){ // CURRENT DIRECTORY
 								subString = new File (currentDir);
-							}else{
+							}else{ // CHANGE DIRECTORY
 								dir = tokenizedLine.nextToken();
-								subString = new File(currentDir, dir);
+								subString = changeDir(dir, currentDir, rootDir);
 							}
-							if (subString.exists() && getFileExtension(subString).equals("")){
+							if (subString.exists() && getFileExtension(new File(dir)).equals("")){ // check if exists and is a directory
 								currentDir = subString.getPath();
-								listDir = "+" + currentDir + "\0\\.\0\\..";
+								listDir = "\0+" + currentDir + "<CRLF>\0\\.<CRLF>\0\\..";
 								getList(subString, subString, arg);
-								outputSentence = listDir;
+								String[] outputList = listDir.split("<CRLF>");
+								for (String s : outputList){
+									outToClient.writeBytes(s + '\n');
+								}
+								outputSentence = "";
+//								outputSentence = listDir;
 							}else{
 								outputSentence = "-ERROR: directory-path does not exist in current directory";
 							}
@@ -197,23 +220,107 @@ class TCPServer {
 
 				} else if (cmd.equals("CDIR")){					
 					String dir = tokenizedLine.nextToken();
-					File subString = new File (currentDir, dir);
-					if (subString.exists()){
-						if (getFileExtension(subString).equals("")){
-							if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER) {
-								outputSentence = "!Changed working dir to " + dir;
-								currentDir = subString.getPath();
-							}else{
-								outputSentence = "+directory ok, send account/password";
-							}
-						}else{
-							outputSentence = "-ERROR: Not a directory";
+					File subString;
+					// CHANGE DIRECTORY
+					subString = changeDir(dir, currentDir, rootDir);
+					if (subString.exists() && getFileExtension(new File(dir)).equals("")){ // check if exists and is a directory
+						if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){ // if logged in
+							currentDir = subString.getPath();
+							outputSentence = "!Changed working dir to " + currentDir;
+						} else {
+							outputSentence = "+directory ok, send account/password";
+							tempChangeDir = subString.getPath();
 						}
+					}else{
+						outputSentence = "-ERROR: directory-path does not exist in current directory";
+					}
+				
+				} else if (cmd.equals("KILL")) {
+					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){
+						String dir = tokenizedLine.nextToken();
+						File subString = new File(currentDir, dir);
+						try{ // attempt to delete file
+							if (subString.exists()){
+								boolean result = subString.delete();
+								if (result){
+									outputSentence = "+" + dir + " deleted";
+								}else{
+									outputSentence = "-Not deleted, no permissions";
+								}
+							}else{
+								outputSentence = "-Not deleted, file does not exist";
+							}
+						}catch(Exception e){}
+					}else{
+						outputSentence = "-ERROR: Not logged in, try logging in";
 					}
 					
-
-				} else {
+				} else if (cmd.equals("NAME")){
+					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){
+						String dir = tokenizedLine.nextToken();
+						File fileDir = new File(currentDir, dir);
+						if (!fileDir.exists() || !fileDir.isFile()){
+							outputSentence = "-Can't find " + dir + " file";
+						}else{
+							outputSentence = "+File exists, enter new name with TOBE";
+							oldFile = fileDir;
+							tobeNext = 1; // expect tobe
+						}
+					}else{
+						outputSentence = "-ERROR: Not logged in, try logging in";
+					}
+				
+				} else if (cmd.equals("TOBE")){
+					if (tobeNext == 2 && oldFile != null){ // expecting tobe
+						String newFileName = tokenizedLine.nextToken();
+						File newFile = new File(currentDir, newFileName);
+						if(oldFile.renameTo(newFile)){
+							outputSentence = "+" + oldFile.getPath() + " renamed to " + newFile.getPath();
+						}else{
+							outputSentence = "-File wasn't renamed because no permissions or invalid name";
+						}
+					
+					}else{
+						outputSentence = "-ERROR: out of order commands";
+					}
+					
+				} else if (cmd.equals("RETR")){
+					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){
+						String dir = tokenizedLine.nextToken();
+						File targetFile = (new File(currentDir,dir));
+						if (targetFile.exists() && targetFile.isFile()){
+							reader = new BufferedReader(new FileReader (targetFile.getPath()));
+							line = null;
+							ArrayList<String> outArray = new ArrayList<String>();
+							temp = "";
+							int byteCount = 0;
+							try {
+								while((line = reader.readLine()) != null) {
+									outArray.add(line);
+									byteCount += line.length();
+								}
+								byteCount += outArray.size() - 1;
+							} catch (IOException e) {
+								e.printStackTrace();
+							} finally {
+								reader.close();
+							}
+							outputSentence = Integer.toString(byteCount);
+						}else{
+							outputSentence = "-File doesn't exist";
+						}
+					}else{
+						outputSentence = "-ERROR: Not logged in, try logging in";
+					}
+					
+				} else { // UNRECOGNISED COMMAND
 					outputSentence = "-ERROR: Unrecognised Command...";
+				}
+				
+				if (tobeNext == 1){ // reset tobe, but bypass initial tobe set
+					tobeNext = 2;
+				}else{
+					tobeNext = 0;
 				}
 
 				outToClient.writeBytes(outputSentence + '\n'); 
@@ -260,6 +367,45 @@ class TCPServer {
 		return -1;
 	}
 	
+	private static File changeDir(String dir, String currentDir, String rootDir){
+		File subString;
+		
+		if (dir.equals("..")){
+			if(currentDir.lastIndexOf("\\") != -1 && currentDir.lastIndexOf("\\") != 0){
+				subString = new File(currentDir.substring(0,currentDir.lastIndexOf("\\")+1));
+			} else if(currentDir.lastIndexOf("/") != -1 && currentDir.lastIndexOf("/") != 0){
+				subString = new File(currentDir.substring(0,currentDir.lastIndexOf("/")+1));
+			}else{
+				subString = new File(currentDir);
+			}
+		}else if (dir.equals(".")){
+			subString = new File(currentDir);
+		}else{
+			subString = new File(currentDir, dir);
+		}
+		
+//		if (dir.contains("..")){
+//			if (!currentDir.equals(rootDir)){
+//				System.out.println(rootDir);
+//				int sep = rootDir.length() - 1;
+//				for (int i = currentDir.length() - 1; i > rootDir.length(); i--){
+//					if (currentDir.charAt(i) == File.pathSeparatorChar){
+//						sep = i;
+//						break;
+//					}
+//				}
+//				subString = new File(currentDir.substring(0,sep - 1));
+//			}else{
+//				subString = new File(rootDir);
+//			}
+//		}else if (dir.contains(".")){
+//			subString = new File(currentDir);
+//		}else{
+//			subString = new File(currentDir, dir);
+//		}
+		System.out.println(subString);
+		return subString;
+	}
 	
 	private static int checkUser(String name, List<UserData> userDataList){
 		if (name.equals(HOSTNAME)){
@@ -299,28 +445,47 @@ class TCPServer {
 	}
 	
 	public static void getList(File node, File parentNode, String mode){
-		String subString = node.getPath().substring(parentNode.getPath().length());
-		System.out.println(subString);
-		if (!subString.equals("")){
-			listDir += "\0" + subString;
-
-			if (mode.equals("V")){
-				if(node.exists()){
-					double bytes = node.length();
-					Date date = new Date(node.lastModified());
-					DateFormat format = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
-					String dataFormatted = format.format(date);
-					listDir += "\t ~ \t" + bytes + " bytes" + "\t ~ \t" + (node.canWrite()?"not-protected":"protected") + "\t ~ \t" + dataFormatted;
-				}
-			}
-		}
+//		String subString = node.getPath().substring(parentNode.getPath().length());
+//		System.out.println("LIST");
 		
-		if (node.isDirectory()){
-			String[] subNote = node.list();
-			for (String filename : subNote){
-				getList(new File(node, filename), parentNode, mode);
+		File[] f = node.listFiles();
+		if (f != null){
+			for (File ft : f){
+				String subString = ft.getName();
+				if (!subString.equals("")){
+					int length = 31 - subString.length();
+					listDir += "<CRLF>\0" + subString;
+					for (int i = 0; i < length; i++){
+						listDir += ' ';
+					}
+					
+
+					if (mode.equals("V")){
+						if(node.exists()){
+							double bytes = ft.length();
+							if (getFileExtension(ft) != ""){
+								listDir += " | " + String.format("%8s", bytes) + " bytes";
+							}else{
+								listDir += " | " + String.format("%14s", "");
+							}
+							Date date = new Date(node.lastModified());
+							DateFormat format = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
+							String dataFormatted = format.format(date);
+							
+							listDir += " | " + String.format("%13s", (node.canWrite()?"not-protected":"protected"));
+							listDir += " | " + String.format("%20s", dataFormatted);
+							
+//							listDir += "\t ~ \t" + bytes + " bytes" + "\t ~ \t" + (node.canWrite()?"not-protected":"protected") + "\t ~ \t" + dataFormatted;
+						}
+					}
+				}
+				
+				
+				
+				
 			}
 		}
+	
 		
 	}
 } 

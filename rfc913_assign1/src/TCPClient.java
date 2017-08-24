@@ -1,9 +1,11 @@
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileWriter;
 import java.io.InputStreamReader;
 import java.net.Socket;
-import java.util.StringTokenizer;
-import java.util.concurrent.TimeUnit; 
+import java.util.StringTokenizer; 
 class TCPClient { 
 	
 	public static final String HOSTNAME = "localhost";
@@ -17,7 +19,6 @@ class TCPClient {
 		boolean running = true;
 		BufferedReader inFromUser = 
 		new BufferedReader(new InputStreamReader(System.in)); 
-
 		
 		System.out.println("Requesting connection to " + HOSTNAME + " server...");
 		
@@ -34,17 +35,51 @@ class TCPClient {
 		inputSentence = inFromServer.readLine(); 
 		System.out.println(inputSentence);
 		
+		String clientRoot = "clientRoot";
+		String temp;
+		
 		while (true){
 			sentence = inFromUser.readLine(); 
 							
-			outToServer.writeBytes(sentence + '\n'); 
+			outToServer.writeBytes(sentence + '\n');
+			
 			
 			inputSentence = inFromServer.readLine(); 
-			
-			if (inputSentence.contains("\0")){
-				String[] tempArray = inputSentence.split("\0");
-				for (String s : tempArray){
-					System.out.println(s);
+			StringTokenizer tokenizedLine =
+					new StringTokenizer(sentence);
+			temp = tokenizedLine.nextToken();
+			if (temp.equals("RETR") && tokenizedLine.hasMoreTokens()){
+				System.out.println(inputSentence);
+				if (!inputSentence.contains("-")){
+					String fileName = tokenizedLine.nextToken();
+					while (true){
+						sentence = inFromUser.readLine();
+						outToServer.writeBytes(sentence + '\n');
+						if (sentence.equals("STOP")){
+							break;
+						}else if (sentence.equals("SEND")){
+							int byteCount = Integer.parseInt(inputSentence);
+							FileWriter fw = new FileWriter(new File(clientRoot, fileName));
+							BufferedWriter bw = new BufferedWriter(fw);
+							String content = "";
+							while(byteCount > 1){
+								inputSentence = inFromServer.readLine();
+								if (inputSentence.equals("<CRLF>")){
+									content += "\n";
+								}else{
+									content += inputSentence;
+								}								
+							}
+							bw.write(content);
+							System.out.println("Filed saved");
+						}
+					}
+				}
+				
+			}else if (inputSentence.contains("\0")){
+				while (inputSentence.contains("\0")){
+					System.out.println(inputSentence.replaceAll("\0",""));
+					inputSentence = inFromServer.readLine(); 
 				}
 			}else{
 				System.out.println(inputSentence); 
