@@ -2,9 +2,11 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.InputStreamReader;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.StringTokenizer; 
 class TCPClient { 
 	
@@ -44,34 +46,40 @@ class TCPClient {
 			outToServer.writeBytes(sentence + '\n');
 			
 			
-			inputSentence = inFromServer.readLine(); 
-			StringTokenizer tokenizedLine =
-					new StringTokenizer(sentence);
+			inputSentence = inFromServer.readLine();
+			StringTokenizer tokenizedLine =	new StringTokenizer(sentence);
 			temp = tokenizedLine.nextToken();
 			if (temp.equals("RETR") && tokenizedLine.hasMoreTokens()){
 				System.out.println(inputSentence);
 				if (!inputSentence.contains("-")){
 					String fileName = tokenizedLine.nextToken();
 					while (true){
-						sentence = inFromUser.readLine();
-						outToServer.writeBytes(sentence + '\n');
+						sentence = inFromUser.readLine().replaceAll(" ", "");
 						if (sentence.equals("STOP")){
+							outToServer.writeBytes(sentence + '\n');
+							System.out.println(inFromServer.readLine());
 							break;
 						}else if (sentence.equals("SEND")){
+							outToServer.writeBytes(sentence + '\n');
 							int byteCount = Integer.parseInt(inputSentence);
-							FileWriter fw = new FileWriter(new File(clientRoot, fileName));
-							BufferedWriter bw = new BufferedWriter(fw);
-							String content = "";
-							while(byteCount > 1){
+							ArrayList<Byte> byteList = new ArrayList<Byte>();
+							while(byteCount > 0){
 								inputSentence = inFromServer.readLine();
-								if (inputSentence.equals("<CRLF>")){
-									content += "\n";
-								}else{
-									content += inputSentence;
-								}								
+								byteList.add((byte) (Integer.parseInt(inputSentence) & 0x00FF));
+								byteCount--;
 							}
-							bw.write(content);
-							System.out.println("Filed saved");
+							FileOutputStream stream = new FileOutputStream(new File(clientRoot,fileName).getPath());
+							try{
+								byte[] byteArray = new byte[byteList.size()];
+								for(int i = 0; i < byteList.size(); i++) {
+									byteArray[i] = byteList.get(i).byteValue();
+								}
+								stream.write(byteArray);
+							} finally {
+							    stream.close();
+							}
+							System.out.println(inFromServer.readLine());
+							break;
 						}
 					}
 				}

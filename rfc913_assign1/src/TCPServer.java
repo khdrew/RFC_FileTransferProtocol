@@ -2,16 +2,21 @@
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.Iterator;
 import java.util.List;
 import java.util.StringTokenizer;
 
@@ -54,7 +59,6 @@ class TCPServer {
 		String outputSentence = ""; 
 		String cmd;
 		String rootDir = "root";
-		File oldFile = null;
 		
 		ServerSocket welcomeSocket = new ServerSocket(PORTNUMBER); 
 		
@@ -67,6 +71,9 @@ class TCPServer {
 			String currentDir = rootDir;
 			String tempChangeDir = null;
 			int tobeNext = 0;
+			boolean readyToSend = false;
+			byte[] outArray = null;
+			File oldFile = null;
 			
 			Socket connectionSocket = welcomeSocket.accept(); 
 			
@@ -89,8 +96,24 @@ class TCPServer {
 				cmd = tokenizedLine.nextToken();
 				if (cmd.equals("DONE")){
 					outputSentence = "+" + HOSTNAME + " closing connection";
-
-				}else if (!tokenizedLine.hasMoreTokens()){
+				} else if (readyToSend){
+					while (true){
+						if (clientSentence.equals("SEND")){
+							for (int i = 0; i < outArray.length; i++){
+								String s = Integer.toString((int)outArray[i]);
+								outToClient.writeBytes(s + '\n');
+							}
+							outputSentence = "+File Sent";
+							break;				
+						}else if (clientSentence.equals("STOP")){
+							outputSentence = "+ok, RETR aborted";
+							break;
+						}
+						clientSentence = inFromClient.readLine();
+					}					
+					readyToSend = false;
+					
+				} else if (!tokenizedLine.hasMoreTokens()){
 					outputSentence = "-ERROR: Not enough args...";
 					
 				} else if (cmd.equals("USER")) { // USER
@@ -288,24 +311,10 @@ class TCPServer {
 					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){
 						String dir = tokenizedLine.nextToken();
 						File targetFile = (new File(currentDir,dir));
-						if (targetFile.exists() && targetFile.isFile()){
-							reader = new BufferedReader(new FileReader (targetFile.getPath()));
-							line = null;
-							ArrayList<String> outArray = new ArrayList<String>();
-							temp = "";
-							int byteCount = 0;
-							try {
-								while((line = reader.readLine()) != null) {
-									outArray.add(line);
-									byteCount += line.length();
-								}
-								byteCount += outArray.size() - 1;
-							} catch (IOException e) {
-								e.printStackTrace();
-							} finally {
-								reader.close();
-							}
-							outputSentence = Integer.toString(byteCount);
+						if (targetFile.exists() && targetFile.isFile()){							
+							outArray = extractBytes(targetFile.getPath());							
+							outputSentence = Integer.toString(outArray.length);
+							readyToSend = true;
 						}else{
 							outputSentence = "-File doesn't exist";
 						}
@@ -378,33 +387,20 @@ class TCPServer {
 			}else{
 				subString = new File(currentDir);
 			}
-		}else if (dir.equals(".")){
+		}else if (dir.contains(".")){
 			subString = new File(currentDir);
 		}else{
 			subString = new File(currentDir, dir);
 		}
-		
-//		if (dir.contains("..")){
-//			if (!currentDir.equals(rootDir)){
-//				System.out.println(rootDir);
-//				int sep = rootDir.length() - 1;
-//				for (int i = currentDir.length() - 1; i > rootDir.length(); i--){
-//					if (currentDir.charAt(i) == File.pathSeparatorChar){
-//						sep = i;
-//						break;
-//					}
-//				}
-//				subString = new File(currentDir.substring(0,sep - 1));
-//			}else{
-//				subString = new File(rootDir);
-//			}
-//		}else if (dir.contains(".")){
-//			subString = new File(currentDir);
-//		}else{
-//			subString = new File(currentDir, dir);
-//		}
 		System.out.println(subString);
 		return subString;
+	}
+	
+	public static byte[] extractBytes (String ImageName) throws IOException 
+	{
+	    Path path = Paths.get(ImageName);
+	    byte[] data = Files.readAllBytes(path);
+	    return data;
 	}
 	
 	private static int checkUser(String name, List<UserData> userDataList){
@@ -464,9 +460,9 @@ class TCPServer {
 						if(node.exists()){
 							double bytes = ft.length();
 							if (getFileExtension(ft) != ""){
-								listDir += " | " + String.format("%8s", bytes) + " bytes";
+								listDir += " | " + String.format("%15s", bytes) + " bytes";
 							}else{
-								listDir += " | " + String.format("%14s", "");
+								listDir += " | " + String.format("%21s", "");
 							}
 							Date date = new Date(node.lastModified());
 							DateFormat format = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
@@ -475,7 +471,6 @@ class TCPServer {
 							listDir += " | " + String.format("%13s", (node.canWrite()?"not-protected":"protected"));
 							listDir += " | " + String.format("%20s", dataFormatted);
 							
-//							listDir += "\t ~ \t" + bytes + " bytes" + "\t ~ \t" + (node.canWrite()?"not-protected":"protected") + "\t ~ \t" + dataFormatted;
 						}
 					}
 				}
