@@ -4,8 +4,12 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.StringTokenizer; 
 class TCPClient { 
@@ -45,7 +49,6 @@ class TCPClient {
 							
 			outToServer.writeBytes(sentence + '\n');
 			
-			
 			inputSentence = inFromServer.readLine();
 			StringTokenizer tokenizedLine =	new StringTokenizer(sentence);
 			temp = tokenizedLine.nextToken();
@@ -68,18 +71,33 @@ class TCPClient {
 								byteList.add((byte) (Integer.parseInt(inputSentence) & 0x00FF));
 								byteCount--;
 							}
-							FileOutputStream stream = new FileOutputStream(new File(clientRoot,fileName).getPath());
-							try{
-								byte[] byteArray = new byte[byteList.size()];
-								for(int i = 0; i < byteList.size(); i++) {
-									byteArray[i] = byteList.get(i).byteValue();
-								}
-								stream.write(byteArray);
-							} finally {
-							    stream.close();
+							System.out.println(inFromServer.readLine());
+							saveFile(byteList, clientRoot, fileName);
+							break;
+						}
+					}
+				}
+
+			}else if (temp.equals("STOR") && tokenizedLine.hasMoreTokens()){
+				System.out.println(inputSentence);
+				
+				String mode = tokenizedLine.nextToken();
+				if (tokenizedLine.hasMoreTokens()){
+					String fileName = tokenizedLine.nextToken();
+					File targetFile = new File(clientRoot, fileName);
+					if (!inputSentence.contains("-") && inputSentence.contains("+")){
+						// SENDING SIZE
+						byte[] outArray = extractBytes(targetFile.getPath());
+						sentence = "SIZE " + outArray.length;
+						outToServer.writeBytes(sentence + '\n');
+						System.out.println("CLIENT SENDING: " + sentence);
+						inputSentence = inFromServer.readLine();
+						if (!inputSentence.contains("-") && inputSentence.contains("+")){
+							for (int i = 0; i < outArray.length; i++){
+								String s = Integer.toString((int)outArray[i]);
+								outToServer.writeBytes(s + '\n');
 							}
 							System.out.println(inFromServer.readLine());
-							break;
 						}
 					}
 				}
@@ -100,6 +118,29 @@ class TCPClient {
 			}
 		}			
 		
-			
+		
 	} 
+	
+	
+	
+	public static void saveFile(ArrayList<Byte> byteList, String clientRoot, String fileName) throws IOException{
+		FileOutputStream stream = new FileOutputStream(new File(clientRoot,fileName).getPath());
+		try{
+			byte[] byteArray = new byte[byteList.size()];
+			for(int i = 0; i < byteList.size(); i++) {
+				byteArray[i] = byteList.get(i).byteValue();
+			}
+			stream.write(byteArray);
+		} finally {
+		    stream.close();
+		}		
+	}
+	
+	
+	public static byte[] extractBytes (String ImageName) throws IOException {
+	    Path path = Paths.get(ImageName);
+	    byte[] data = Files.readAllBytes(path);
+	    return data;
+	}
+	
 } 
