@@ -16,13 +16,12 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.Iterator;
 import java.util.List;
 import java.util.StringTokenizer;
 
 import com.google.gson.Gson;
 
-class TCPServer { 
+class ServerMain { 
 	
 	public static final String HOSTNAME = "localhost";
 	public static final int PORTNUMBER = 6789;
@@ -46,6 +45,7 @@ class TCPServer {
 			LoginState state = LoginState.WAIT_ACC;
 			String user = null;
 			String account = null;
+			String password = null;
 			String type = "B";
 			String currentDir = rootDir;
 			String tempChangeDir = null; // user for when CDIR is done without being logged in
@@ -77,9 +77,12 @@ class TCPServer {
 				new StringTokenizer(clientSentence);
 				
 				cmd = tokenizedLine.nextToken();
+				// DONE COMMAND - close connection to client
 				if (cmd.equals("DONE")){ // close connection
 					outputSentence = "+" + HOSTNAME + " closing connection";
-				} else if (readyToSend){ // RETR
+					
+				// RETR COMMAND - await for SEND or STOP command to start or stop sending the requested file
+				} else if (readyToSend){ 
 					while (true){
 						if (clientSentence.equals("SEND")){ // send out bytes to client
 							for (int i = 0; i < outArray.length; i++){
@@ -95,7 +98,9 @@ class TCPServer {
 						clientSentence = inFromClient.readLine();
 					}					
 					readyToSend = false;
-				} else if (awaitSize > 0){ // STOR
+					
+				// STOR COMMAND - await for SIZE and receive file to be stored
+				} else if (awaitSize > 0){
 					while (true){
 						if (cmd.equals("SIZE") && tokenizedLine.hasMoreTokens()){
 							int size = Integer.parseInt(tokenizedLine.nextToken());
@@ -107,14 +112,14 @@ class TCPServer {
 								size--;
 							}
 							
-							// STORING FILE
-							byte[] byteArray = null;
-							if (awaitSize == 1){ // create new file
+							// storing file
+							byte[] byteArray = null; // array to be written to file 
+							if (awaitSize == 1){ // create new file array
 								byteArray = new byte[byteList.size()];
 								for(int i = 0; i < byteList.size(); i++) {
 									byteArray[i] = byteList.get(i).byteValue();
 								}
-							}else{ // append file
+							}else{ // append file array
 								byte[] existingFile = extractBytes(writeFile.getPath());
 								byteArray = new byte[existingFile.length + byteList.size()];
 								for (int i = 0; i < existingFile.length; i++){
@@ -125,11 +130,11 @@ class TCPServer {
 								}
 							}
 							FileOutputStream stream = new FileOutputStream(writeFile.getPath());
-							try{
+							try{ // try save file
 								stream.write(byteArray);
 								outputSentence = "+Saved " + writeFile.getPath();
 								awaitSize = 0;
-							}catch (Exception e){ // ERROR
+							}catch (Exception e){ // could not write to file
 								outputSentence = "-Couldn't write to " + writeFile.getPath();
 							} finally {
 							    stream.close();
@@ -140,10 +145,13 @@ class TCPServer {
 						tokenizedLine = new StringTokenizer(clientSentence);
 						cmd = tokenizedLine.nextToken();
 					}
+				
+				// ERROR COMMAND - other commands that do not have enough arguments to operate	
 				} else if (!tokenizedLine.hasMoreTokens()){
 					outputSentence = "-ERROR: Not enough args...";
-					
-				} else if (cmd.equals("USER")) { // USER
+				
+				// USER COMMAND - adding user to server, or log in
+				} else if (cmd.equals("USER")) { 
 					if (state == LoginState.WAIT_ACC || state == LoginState.WAIT_PW){
 						String tempUser = tokenizedLine.nextToken();
 						int result = checkUser(tempUser, userDataList);
@@ -155,24 +163,32 @@ class TCPServer {
 							state = LoginState.LOGIN_USER;
 							user = tempUser;
 							account = null;
-							tempChangeDir = null;
+							password = null;
+							if (tempChangeDir != null){ // change directory if requested prior to log in
+								currentDir = tempChangeDir;
+								outputSentence += " Changed working dir to " + currentDir;
+								tempChangeDir = null;
+							}
 						}else if (result == 1){ // request account & password
 							outputSentence = "+User-id valid, send account and password";
 							user = tempUser;
 							account = null;
+							password = null;
 							state = LoginState.WAIT_ACC;
 						}
 					}else{
 						outputSentence = "-ERROR: Already logged in as " + ((state==LoginState.LOGIN_USER)?user:account);
 					}
-					
+				
+				// ACCT COMMAND - adding account to system, or log in
 				} else if (cmd.equals("ACCT")) {
 					if (state == LoginState.WAIT_ACC || state == LoginState.WAIT_PW){
 						String tempAccount = tokenizedLine.nextToken();
-						int result = checkAccount(tempAccount, userDataList);
+						int result = checkAccount(tempAccount, userDataList, password);
 						if (result == -1){ // invalid account
-							outputSentence = "-Invalid account, try again";
+							outputSentence = "-Invalid account or password, try again";
 							tempChangeDir = null;
+							password = null;
 						}else if (result == 0){ // bypass password
 							outputSentence = "!Account valid, logged in";
 							state = LoginState.LOGIN_ACCOUNT;
@@ -180,7 +196,7 @@ class TCPServer {
 							user = null;
 							if (tempChangeDir != null){ // change directory if requested prior to log in
 								currentDir = tempChangeDir;
-								outputSentence += "\0!Changed working dir to " + currentDir;
+								outputSentence += " Changed working dir to " + currentDir;
 								tempChangeDir = null;
 							}
 						}else if (result == 1){ // request password
@@ -192,9 +208,10 @@ class TCPServer {
 					}else{
 						outputSentence = "-ERROR: Already logged in as " + ((state==LoginState.LOGIN_USER)?user:account);
 					}
-
+				
+				// PASS COMMAND - adding password to system, or log in
 				} else if (cmd.equals("PASS")) { // password
-					if (state == LoginState.WAIT_PW){ // login for account
+					if (state == LoginState.WAIT_PW){ // login for ACCOUNT
 						String tempPassword = tokenizedLine.nextToken();
 						int result = checkPassAccount(tempPassword, account, userDataList);
 						if (result == -1){ // invalid password
@@ -203,13 +220,13 @@ class TCPServer {
 						}else if (result == 1){ // logged in account
 							outputSentence = "!Logged in";
 							state = LoginState.LOGIN_ACCOUNT;
-							if (tempChangeDir != null){
+							if (tempChangeDir != null){ // change directory if requested prior to log in
 								currentDir = tempChangeDir;
-								outputSentence += "\0!Changed working dir to " + currentDir;
+								outputSentence += " Changed working dir to " + currentDir;
 								tempChangeDir = null;
 							}
 						}
-					}else if (state == LoginState.WAIT_ACC){ // login for user
+					}else if (state == LoginState.WAIT_ACC){ // login for USER
 						String tempPassword = tokenizedLine.nextToken();
 						int result = checkPassUser(tempPassword, user, userDataList);
 						if (result == -1){ // invalid password
@@ -217,6 +234,7 @@ class TCPServer {
 							tempChangeDir = null;
 						}else if (result == 1){ // logged in user but no account
 							outputSentence = "+Send account";
+							password = tempPassword;
 						}
 					}else{
 						outputSentence = "-ERROR: Already logged in as " + ((state==LoginState.LOGIN_USER)?user:account);
@@ -421,8 +439,10 @@ class TCPServer {
 	
 	
 	private static int checkPassUser(String password, String user, List<UserData> userDataList){
-		if (user == null || password == null){
+		if (password == null){
 			return -1;
+		}else if (user == null){
+			return 1;
 		}
 		for (UserData ud : userDataList){ // check if password is correct
 			if (ud.user != null){
@@ -459,11 +479,14 @@ class TCPServer {
 	    return data;
 	}
 	
+	@SuppressWarnings("unused")
 	private static int checkUser(String name, List<UserData> userDataList){
 		if (name.equals(HOSTNAME)){
 			return 0;
 		}
-		
+		if (name == null){
+			return 1;
+		}				
 		for (UserData ud : userDataList) {
 			if (ud.user != null){
 				if (ud.user.equals(name)){ // found user
@@ -480,15 +503,24 @@ class TCPServer {
 	
 	
 	
-	private static int checkAccount(String name, List<UserData> userDataList){
-
+	private static int checkAccount(String name, List<UserData> userDataList, String password){		
 		for (UserData ud : userDataList) {
 			if (ud.account != null){
 				if (ud.account.equals(name)){ // found account
-					if (ud.password == null){ // check if has password
-						return 0;
-					}else{
-						return 1;
+					if (password == null){ // check if has no password input before
+						if (ud.password == null){ // account does not require password
+							return 0; // bypass and log in
+						}else{
+							return 1; // does require password
+						}
+					}else{ // user has placed password in before
+						if (ud.password == null){ // if password is null, then previous password is wrong
+							return -1;
+						}else if (ud.password.equals(password)){
+							return 0; // logged in
+						}else{
+							return -1; // incorrect password
+						}
 					}
 				}
 			}

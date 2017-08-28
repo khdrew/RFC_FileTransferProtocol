@@ -1,9 +1,7 @@
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.Socket;
@@ -12,13 +10,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.StringTokenizer; 
-class TCPClient { 
+
+class ClientMain { 
 	
 	public static final String HOSTNAME = "localhost";
 	public static final int PORTNUMBER = 6789;
 	
 	public static void main(String argv[]) throws Exception 
 	{ 
+	
 		String sentence; 
 		String inputSentence;
 		String cmd;
