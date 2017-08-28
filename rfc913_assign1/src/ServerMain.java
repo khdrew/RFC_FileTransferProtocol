@@ -1,3 +1,6 @@
+// CS725 - RFC913
+// KLAI054 - 6747578
+// SERVER
 
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
@@ -25,7 +28,6 @@ class ServerMain {
 	
 	public static final String HOSTNAME = "localhost";
 	public static final int PORTNUMBER = 6789;
-	
 	
 	private static String listDir = "";
 	public static void main(String argv[]) throws Exception
@@ -240,6 +242,7 @@ class ServerMain {
 						outputSentence = "-ERROR: Already logged in as " + ((state==LoginState.LOGIN_USER)?user:account);
 					}
 					
+				// TYPE COMMAND - sets transmission mode
 				} else if (cmd.equals("TYPE")) { // setting type
 					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){ // check if logged in
 						String arg = tokenizedLine.nextToken();
@@ -256,15 +259,17 @@ class ServerMain {
 							outputSentence = "-Type not valid";
 						}
 					}
+					
+				// LIST COMMAND - lists files and directories in current working directory
 				} else if (cmd.equals("LIST")){
 					String arg = tokenizedLine.nextToken();
-					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER) {
-						if (arg.equals("F") || arg.equals("V")){
+					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER) { // check if logged in
+						if (arg.equals("F") || arg.equals("V")){ // check if mode is correct
 							File subString;
 							String dir = "";
-							if (!tokenizedLine.hasMoreTokens()){ // CURRENT DIRECTORY
+							if (!tokenizedLine.hasMoreTokens()){ // parse current directory
 								subString = new File (currentDir);
-							}else{ // CHANGE DIRECTORY
+							}else{ // parse input directory
 								dir = tokenizedLine.nextToken();
 								subString = changeDir(dir, currentDir, rootDir);
 							}
@@ -286,17 +291,16 @@ class ServerMain {
 					}else{
 						outputSentence = "-ERROR: Not logged in, try logging in";
 					}
-
+				
+				// CDIR COMMAND - changes working directory to specified directory
 				} else if (cmd.equals("CDIR")){					
 					String dir = tokenizedLine.nextToken();
-					File subString;
-					// CHANGE DIRECTORY
-					subString = changeDir(dir, currentDir, rootDir);
+					File subString = changeDir(dir, currentDir, rootDir);
 					if (subString.exists() && getFileExtension(new File(dir)).equals("")){ // check if exists and is a directory
 						if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){ // if logged in
 							currentDir = subString.getPath();
 							outputSentence = "!Changed working dir to " + currentDir;
-						} else {
+						} else { // currently not logged in, save for next log in attempt
 							outputSentence = "+directory ok, send account/password";
 							tempChangeDir = subString.getPath();
 						}
@@ -304,14 +308,15 @@ class ServerMain {
 						outputSentence = "-ERROR: directory-path does not exist in current directory";
 					}
 				
+				// KILL COMMAND - deletes specified file
 				} else if (cmd.equals("KILL")) {
-					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){
+					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){ // check if logged in
 						String dir = tokenizedLine.nextToken();
 						File subString = new File(currentDir, dir);
 						try{ // attempt to delete file
-							if (subString.exists()){
+							if (subString.exists()){ // check if file exists
 								boolean result = subString.delete();
-								if (result){
+								if (result){ // check permissions
 									outputSentence = "+" + dir + " deleted";
 								}else{
 									outputSentence = "-Not deleted, no permissions";
@@ -323,27 +328,29 @@ class ServerMain {
 					}else{
 						outputSentence = "-ERROR: Not logged in, try logging in";
 					}
-					
+				
+				// NAME COMMAND - renames specified file
 				} else if (cmd.equals("NAME")){
-					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){
+					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){ // check if logged in
 						String dir = tokenizedLine.nextToken();
 						File fileDir = new File(currentDir, dir);
-						if (!fileDir.exists() || !fileDir.isFile()){
+						if (!fileDir.exists() || !fileDir.isFile()){ // check if specified item exists and is a file
 							outputSentence = "-Can't find " + dir + " file";
 						}else{
 							outputSentence = "+File exists, enter new name with TOBE";
 							oldFile = fileDir;
-							tobeNext = 1; // expect tobe
+							tobeNext = 1; // expect TOBE
 						}
 					}else{
 						outputSentence = "-ERROR: Not logged in, try logging in";
 					}
 				
+				// TOBE COMMAND - follow up from NAME COMMMAND
 				} else if (cmd.equals("TOBE")){
-					if (tobeNext == 2 && oldFile != null){ // expecting tobe
+					if (tobeNext == 2 && oldFile != null){ // expecting TOBE
 						String newFileName = tokenizedLine.nextToken();
 						File newFile = new File(currentDir, newFileName);
-						if(oldFile.renameTo(newFile)){
+						if(oldFile.renameTo(newFile)){ // check if rename-able
 							outputSentence = "+" + oldFile.getPath() + " renamed to " + newFile.getPath();
 						}else{
 							outputSentence = "-File wasn't renamed because no permissions or invalid name";
@@ -353,14 +360,15 @@ class ServerMain {
 						outputSentence = "-ERROR: out of order commands";
 					}
 					
+				// RETR COMMAND - retrieve file
 				} else if (cmd.equals("RETR")){
-					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){
+					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){ // check if logged in
 						String dir = tokenizedLine.nextToken();
 						File targetFile = (new File(currentDir,dir));
-						if (targetFile.exists() && targetFile.isFile()){							
+						if (targetFile.exists() && targetFile.isFile()){ // check if file exists and is actually a file					
 							outArray = extractBytes(targetFile.getPath());							
 							outputSentence = Integer.toString(outArray.length);
-							readyToSend = true;
+							readyToSend = true; // initialize RETR loop
 						}else{
 							outputSentence = "-File doesn't exist";
 						}
@@ -368,16 +376,17 @@ class ServerMain {
 						outputSentence = "-ERROR: Not logged in, try logging in";
 					}
 					
+				// STOR COMMAND - client send a file to be stored in server root
 				} else if (cmd.equals("STOR")){
-					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){
+					if (state == LoginState.LOGIN_ACCOUNT || state == LoginState.LOGIN_USER){ // check if logged in
 						String mode = tokenizedLine.nextToken();
 						if (tokenizedLine.hasMoreTokens()){
 							String fileName = tokenizedLine.nextToken();
 							File targetFile = new File(currentDir, fileName);
 							writeFile = targetFile;
-							boolean exists = targetFile.exists();
+							boolean exists = targetFile.exists(); // checking if file exists
 							awaitSize = 0;
-							if (mode.equals("NEW")){
+							if (mode.equals("NEW")){ // for each mode, set out message and mode
 								outputSentence = (exists)?"+File exists, will create new generation of file":
 									"+File does not exist, will create new file";
 								awaitSize = 1;
@@ -402,20 +411,23 @@ class ServerMain {
 					outputSentence = "-ERROR: Unrecognised Command...";
 				}
 				
-				if (tobeNext == 1){ // reset tobe, but bypass initial tobe set
+				if (tobeNext == 1){ // reset TOBE, but bypass initial TOBE set
 					tobeNext = 2;
 				}else{
 					tobeNext = 0;
 				}
 
+				// SEND TO CLIENT
 				outToClient.writeBytes(outputSentence + '\n'); 
-				if (cmd.equals("DONE")){
+				
+				if (cmd.equals("DONE")){ // CLOSE connection to client if DONE is the command
 					break;
 				}
 			}
 		} 
 	}
 
+	// checks if password and/or account exists and is correct in the user data list
 	private static int checkPassAccount(String password, String account, List<UserData> userDataList){
 		if (account == null || password == null){
 			return -1;
@@ -428,16 +440,10 @@ class ServerMain {
 			}
 		}		
 		return -1;
+		// 1 for existing account/password, -1 for error
 	}
 
-	private static String getFileExtension(File file) {
-		String fileName = file.getName();
-		if(fileName.lastIndexOf(".") != -1 && fileName.lastIndexOf(".") != 0)
-			return fileName.substring(fileName.lastIndexOf(".")+1);
-		else return "";
-	}
-	
-	
+	// checks if password and/or user exists and is correct in the user data list
 	private static int checkPassUser(String password, String user, List<UserData> userDataList){
 		if (password == null){
 			return -1;
@@ -452,33 +458,10 @@ class ServerMain {
 			}
 		}		
 		return -1;
+		// 1 for existing user/password, -1 for error
 	}
 	
-	private static File changeDir(String dir, String currentDir, String rootDir){
-		File subString;
-		
-		if (dir.equals("..")){
-			if(currentDir.lastIndexOf("\\") != -1 && currentDir.lastIndexOf("\\") != 0){
-				subString = new File(currentDir.substring(0,currentDir.lastIndexOf("\\")+1));
-			} else if(currentDir.lastIndexOf("/") != -1 && currentDir.lastIndexOf("/") != 0){
-				subString = new File(currentDir.substring(0,currentDir.lastIndexOf("/")+1));
-			}else{
-				subString = new File(currentDir);
-			}
-		}else if (dir.contains(".")){
-			subString = new File(currentDir);
-		}else{
-			subString = new File(currentDir, dir);
-		}
-		return subString;
-	}
-	
-	public static byte[] extractBytes (String ImageName) throws IOException {
-	    Path path = Paths.get(ImageName);
-	    byte[] data = Files.readAllBytes(path);
-	    return data;
-	}
-	
+	// check user exists
 	@SuppressWarnings("unused")
 	private static int checkUser(String name, List<UserData> userDataList){
 		if (name.equals(HOSTNAME)){
@@ -499,10 +482,10 @@ class ServerMain {
 			}
 		}
 		return -1;
+		// -1 for error, 1 requires account/password, 0 does not need account/password
 	}
 	
-	
-	
+	// check if account exists	
 	private static int checkAccount(String name, List<UserData> userDataList, String password){		
 		for (UserData ud : userDataList) {
 			if (ud.account != null){
@@ -526,15 +509,49 @@ class ServerMain {
 			}
 		}
 		return -1;
+		// -1 error, 1 require password, 0 account and password match
 	}
 	
+	
+	// set directory change based on current directory, root and input directory
+	private static File changeDir(String dir, String currentDir, String rootDir){
+		File subString;		
+		if (dir.equals("..")){ // set back one directory
+			if(currentDir.lastIndexOf("\\") != -1 && currentDir.lastIndexOf("\\") != 0){
+				subString = new File(currentDir.substring(0,currentDir.lastIndexOf("\\")+1));
+			} else if(currentDir.lastIndexOf("/") != -1 && currentDir.lastIndexOf("/") != 0){
+				subString = new File(currentDir.substring(0,currentDir.lastIndexOf("/")+1));
+			}else{
+				subString = new File(currentDir);
+			}
+		}else if (dir.contains(".")){ // set current directory as current
+			subString = new File(currentDir);
+		}else{ // set new directory
+			subString = new File(currentDir, dir);
+		}
+		return subString;
+	}
+	
+	// gets the file extension of a given file name 
+	private static String getFileExtension(File file) {
+		String fileName = file.getName();
+		if(fileName.lastIndexOf(".") != -1 && fileName.lastIndexOf(".") != 0)
+			return fileName.substring(fileName.lastIndexOf(".")+1);
+		else return "";
+	}
+
+	// extracts file bytes
+	public static byte[] extractBytes (String ImageName) throws IOException {
+	    Path path = Paths.get(ImageName);
+	    byte[] data = Files.readAllBytes(path);
+	    return data;
+	}
+	
+	// gets listing of files to be printed
 	public static void getList(File node, File parentNode, String mode){
-//		String subString = node.getPath().substring(parentNode.getPath().length());
-//		System.out.println("LIST");
-		
 		File[] f = node.listFiles();
 		if (f != null){
-			for (File ft : f){
+			for (File ft : f){ // list all current directory files
 				String subString = ft.getName();
 				if (!subString.equals("")){
 					int length = 31 - subString.length();
@@ -542,34 +559,31 @@ class ServerMain {
 					for (int i = 0; i < length; i++){
 						listDir += ' ';
 					}
-					
-
-					if (mode.equals("V")){
+					if (mode.equals("V")){ // verbose listings
 						if(node.exists()){
 							double bytes = ft.length();
 							if (getFileExtension(ft) != ""){
-								listDir += " | " + String.format("%15s", bytes) + " bytes";
+								listDir += " | " + String.format("%15s", bytes) + " bytes"; // size
 							}else{
-								listDir += " | " + String.format("%21s", "");
+								listDir += " | " + String.format("%21s", ""); // directory, pad with spaces
 							}
+							// protected file/directory listing
+							listDir += " | " + String.format("%13s", (node.canWrite()?"not-protected":"protected"));
+							
+							// last modified listing
 							Date date = new Date(node.lastModified());
 							DateFormat format = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
 							String dataFormatted = format.format(date);
-							
-							listDir += " | " + String.format("%13s", (node.canWrite()?"not-protected":"protected"));
 							listDir += " | " + String.format("%20s", dataFormatted);
 							
 						}
 					}
 				}
-				
 			}
-		}
-	
-		
+		}		
 	}
 	
-	
+	// loading all user data function from JSON file
 	private static List<UserData> loadUserData(String filePath) throws IOException{
 		UserData[] udArray = null;
 		List<UserData> userDataList;
@@ -590,6 +604,8 @@ class ServerMain {
 		} finally {
 			reader.close();
 		}
+		
+		// print users
 		System.out.println("User Data Loaded...");
 		userDataList = Arrays.asList(udArray);
 		for (UserData ud : userDataList) {
@@ -597,13 +613,10 @@ class ServerMain {
 		}
 		return userDataList;
 	}
-	
 
-	
 } 
 
-
-
+// JSON data type
 class UserData {
 	UserData(){}
 	public String user;

@@ -1,3 +1,7 @@
+// CS725 - RFC913
+// KLAI054 - 6747578
+// CLIENT
+
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -18,7 +22,7 @@ class ClientMain {
 	
 	public static void main(String argv[]) throws Exception 
 	{ 
-	
+		// while(true){ // COMMENT/UNCOMMENT FOR INFINITE CONNECTION REQUESTS
 		String sentence; 
 		String inputSentence;
 		String cmd;
@@ -52,17 +56,19 @@ class ClientMain {
 			inputSentence = inFromServer.readLine();
 			StringTokenizer tokenizedLine =	new StringTokenizer(sentence);
 			temp = tokenizedLine.nextToken();
+			
+			// RETR COMMAND - retrieve file loop
 			if (temp.equals("RETR") && tokenizedLine.hasMoreTokens()){
 				System.out.println(inputSentence);
-				if (!inputSentence.contains("-")){
+				if (!inputSentence.contains("-")){ // received non error response
 					String fileName = tokenizedLine.nextToken();
-					while (true){
+					while (true){ // poll for STOP or SEND command
 						sentence = inFromUser.readLine().replaceAll(" ", "");
 						if (sentence.equals("STOP")){
 							outToServer.writeBytes(sentence + '\n');
 							System.out.println(inFromServer.readLine());
 							break;
-						}else if (sentence.equals("SEND")){
+						}else if (sentence.equals("SEND")){ // save file into client root
 							outToServer.writeBytes(sentence + '\n');
 							int byteCount = Integer.parseInt(inputSentence);
 							ArrayList<Byte> byteList = new ArrayList<Byte>();
@@ -78,15 +84,15 @@ class ClientMain {
 					}
 				}
 
+			// STOR COMMAND - stores file from client root into server
 			}else if (temp.equals("STOR") && tokenizedLine.hasMoreTokens()){
 				System.out.println(inputSentence);
-				
 				String mode = tokenizedLine.nextToken();
 				if (tokenizedLine.hasMoreTokens()){
 					String fileName = tokenizedLine.nextToken();
 					File targetFile = new File(clientRoot, fileName);
-					if (!inputSentence.contains("-") && inputSentence.contains("+")){
-						// SENDING SIZE
+					if (!inputSentence.contains("-") && inputSentence.contains("+")){ // non error response
+						// send size information
 						byte[] outArray = extractBytes(targetFile.getPath());
 						sentence = "SIZE " + outArray.length;
 						outToServer.writeBytes(sentence + '\n');
@@ -101,28 +107,29 @@ class ClientMain {
 						}
 					}
 				}
-				
+
+			// null character parse
 			}else if (inputSentence.contains("\0")){
 				while (inputSentence.contains("\0")){
 					System.out.println(inputSentence.replaceAll("\0",""));
 					inputSentence = inFromServer.readLine(); 
 				}
-			}else{
+			
+			}else{ // print response				
 				System.out.println(inputSentence); 
 			}
 			
+			// DONE COMMAND
 			if (inputSentence.equals("+" + HOSTNAME + " closing connection")){
 				System.out.println("Closing connection...");
 				clientSocket.close();
 				break;
 			}
-		}			
-		
-		
+		}
+		// } // COMMENT/UNCOMMENT FOR INFINITE CONNECTION REQUESTS
 	} 
 	
-	
-	
+	// save file in client root	
 	public static void saveFile(ArrayList<Byte> byteList, String clientRoot, String fileName) throws IOException{
 		FileOutputStream stream = new FileOutputStream(new File(clientRoot,fileName).getPath());
 		try{
@@ -136,11 +143,13 @@ class ClientMain {
 		}		
 	}
 	
-	
+	// extract file bytes
 	public static byte[] extractBytes (String ImageName) throws IOException {
 	    Path path = Paths.get(ImageName);
 	    byte[] data = Files.readAllBytes(path);
 	    return data;
 	}
 	
-} 
+}
+
+
